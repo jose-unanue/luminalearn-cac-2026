@@ -1,0 +1,114 @@
+rules_version = '2';
+
+// Phase 3: LuminaLearn Cloud Firestore Security Rules
+// Enforces role-based custom claims (student, teacher, moderator, admin)
+// and isolates student progress/submissions so a student can NEVER read
+// another student's data by changing a URL, query, or client state.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function hasRole(role) {
+      return isSignedIn() && request.auth.token.role == role;
+    }
+
+    function isTeacherOrAdmin() {
+      return isSignedIn() && (
+        request.auth.token.role == 'teacher' ||
+        request.auth.token.role == 'admin'
+      );
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isClassTeacher(classId) {
+      return isTeacherOrAdmin() &&
+        get(/databases/$(database)/documents/classes/$(classId)).data.teacherUid == request.auth.uid;
+    }
+
+    function isClassMember(classId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/classes/$(classId)/members/$(request.auth.uid));
+    }
+
+    // 1. User Profiles & Private Student Subcollections
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isTeacherOrAdmin();
+      allow create, update: if isOwner(uid) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']);
+
+      // Student Course & Skill Progress: strictly isolated to the owning student or authorized educator
+      match /courseProgress/{courseId} {
+        allow read: if isOwner(uid) || isTeacherOrAdmin();
+        allow write: if isOwner(uid);
+      }
+
+      // Student Submissions: strictly isolated to the owning student or authorized educator
+      match /submissions/{submissionId} {
+        allow read: if isOwner(uid) || isTeacherOrAdmin();
+        allow create, update: if isOwner(uid);
+      }
+    }
+
+    // 2. Public Course Metadata, Units & Modules (Read-only for students; gated publishing for authors/teachers)
+    match /courses/{courseId} {
+      allow read: if true;
+      allow write: if isTeacherOrAdmin() &&
+        request.resource.data.accessibilityGatePassed == true;
+
+      match /units/{unitId} {
+        allow read: if true;
+        allow write: if isTeacherOrAdmin();
+
+        match /modules/{moduleId} {
+          allow read: if true;
+          allow write: if isTeacherOrAdmin() &&
+            request.resource.data.accessibilityChecklist.plainLanguageObjective != '' &&
+            request.resource.data.accessibilityChecklist.visualAltDescription != '' &&
+            request.resource.data.accessibilityChecklist.transcriptText != '' &&
+            request.resource.data.accessibilityChecklist.keyboardOperable == true &&
+            request.resource.data.accessibilityChecklist.noColorOnlyInstruction == true &&
+            request.resource.data.accessibilityChecklist.untimedAssessmentPath == true &&
+            request.resource.data.accessibilityChecklist.hintsAndRetryAvailable == true;
+        }
+      }
+    }
+
+    // 3. Classrooms, Membership & Assignments
+    // Membership is stored by user ID and modified only via trusted Cloud Functions transactions
+    match /classes/{classId} {
+      allow read: if isClassMember(classId) || isClassTeacher(classId);
+      allow create, update: if isTeacherOrAdmin();
+
+      match /members/{memberUid} {
+        allow read: if isOwner(memberUid) || isClassTeacher(classId);
+        // Enrollment writes are performed exclusively via callable Cloud Functions transactions
+        allow write: if false;
+      }
+
+      match /assignments/{assignmentId} {
+        allow read: if isClassMember(classId) || isClassTeacher(classId);
+        allow write: if isClassTeacher(classId);
+      }
+    }
+
+    // 4. Contextual AI Threads (Scoped to the student owner and their class teacher)
+    match /aiThreads/{threadId} {
+      allow read: if isSignedIn() && (
+        resource.data.studentUid == request.auth.uid || isTeacherOrAdmin()
+      );
+      allow write: if false; // Written exclusively by callable AI proxy Cloud Function
+    }
+
+    // 5. Immutable Security & Classroom Audit Logs
+    match /auditLogs/{eventId} {
+      allow read: if isTeacherOrAdmin();
+      allow write: if false; // Server-only append
+    }
+  }
+}

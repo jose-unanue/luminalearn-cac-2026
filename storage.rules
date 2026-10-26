@@ -1,0 +1,30 @@
+rules_version = '2';
+
+// Phase 3: LuminaLearn Cloud Storage Security Rules for Approved Learning Media & Transcripts
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isTeacherOrAdmin() {
+      return isSignedIn() && (
+        request.auth.token.role == 'teacher' ||
+        request.auth.token.role == 'admin'
+      );
+    }
+
+    // Approved course diagrams, audio narrations, and downloadable transcripts (.txt / .vtt)
+    match /courses/{courseId}/media/{allPaths=**} {
+      allow read: if true;
+      allow write: if isTeacherOrAdmin();
+    }
+
+    // Student submission attachments (isolated to student owner and teacher)
+    match /submissions/{uid}/{submissionId}/{fileName} {
+      allow read, write: if isSignedIn() && (
+        request.auth.uid == uid || isTeacherOrAdmin()
+      );
+    }
+  }
+}
