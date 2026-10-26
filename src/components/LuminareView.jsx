@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Sparkles,
   Send,
@@ -125,7 +125,8 @@ export default function LuminareView({ onLaunchLesson }) {
   const [isBuildingLesson, setIsBuildingLesson] = useState(false);
   const [lastCreatedLesson, setLastCreatedLesson] = useState(null);
 
-  // AI API Key Form State
+  // AI API Key Form State (alias apiConfig = aiConfig for consistency across services)
+  const apiConfig = aiConfig;
   const [apiKeyInput, setApiKeyInput] = useState(aiConfig?.apiKey || '');
   const [providerInput, setProviderInput] = useState(
     aiConfig?.provider || 'auto'
@@ -137,10 +138,19 @@ export default function LuminareView({ onLaunchLesson }) {
   const [keyTestStatus, setKeyTestStatus] = useState(null);
   const [isTestingKey, setIsTestingKey] = useState(false);
 
+  const chatEndRef = useRef(null);
+
   const detectedProvider = detectProviderFromKey(apiKeyInput, providerInput);
   const isLiveKeyConnected = Boolean((aiConfig?.apiKey || '').trim());
 
-  // Automatically generate initial Personalized Study Plan on first open
+  // Scroll chat stream smoothly when new messages arrive
+  useEffect(() => {
+    if (activeMode === 'chat') {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [luminareMessages.length, isSendingChat, activeMode]);
+
+  // Automatically generate initial Personalized Study Plan on first open or when course/key changes
   useEffect(() => {
     let cancelled = false;
     async function initPlan() {
@@ -150,7 +160,7 @@ export default function LuminareView({ onLaunchLesson }) {
         skillMastery,
         profile,
         customGoal: '',
-        apiConfig
+        apiConfig: aiConfig
       });
       if (!cancelled) {
         setStudyPlan(plan);
@@ -160,7 +170,7 @@ export default function LuminareView({ onLaunchLesson }) {
     return () => {
       cancelled = true;
     };
-  }, [enrolledCourseIds, skillMastery, profile.schoolLevel]);
+  }, [enrolledCourseIds, skillMastery, profile.schoolLevel, aiConfig]);
 
   const handleSendMessage = async (explicitPrompt) => {
     const textToSend =
@@ -191,7 +201,7 @@ export default function LuminareView({ onLaunchLesson }) {
         activeLesson,
         weakSkills,
         profile,
-        apiConfig
+        apiConfig: aiConfig
       });
       setLuminareMessages((prev) => [...prev, replyMsg]);
       triggerCue('hint', 'Luminare replied', 'Tap Read aloud to listen.');
@@ -210,7 +220,7 @@ export default function LuminareView({ onLaunchLesson }) {
         skillMastery,
         profile,
         customGoal: customPlanGoal,
-        apiConfig
+        apiConfig: aiConfig
       });
       setStudyPlan(nextPlan);
       triggerCue(
@@ -234,7 +244,7 @@ export default function LuminareView({ onLaunchLesson }) {
         schoolLevel: builderBand,
         customInterest: builderInterest,
         profile,
-        apiConfig
+        apiConfig: aiConfig
       });
       addCustomLesson(created);
       setLastCreatedLesson(created);
@@ -657,6 +667,7 @@ export default function LuminareView({ onLaunchLesson }) {
                     Luminare is crafting a step-by-step response...
                   </div>
                 )}
+                <div ref={chatEndRef} />
               </div>
 
               {/* Message Composer Footer */}

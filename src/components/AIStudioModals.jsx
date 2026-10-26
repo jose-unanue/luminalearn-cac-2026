@@ -242,7 +242,7 @@ export function AILessonCreatorModal({ isOpen, onClose, onLessonCreated }) {
         schoolLevel,
         customInterest: customInterest.trim(),
         profile,
-        apiConfig
+        apiConfig: aiConfig
       });
       addCustomLesson(created);
       setTopic('');

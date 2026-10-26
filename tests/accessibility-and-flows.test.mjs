@@ -446,9 +446,10 @@ test('Phase 10: Email & password user authentication, Firebase Firestore documen
   assert.equal(
     appSrc.includes("navigateTo('/luminare')") &&
       appSrc.includes('<LuminareView') &&
-      luminareSrc.includes('data-testid="luminare-view"'),
+      luminareSrc.includes('data-testid="luminare-view"') &&
+      luminareSrc.includes('apiConfig: aiConfig'),
     true,
-    'App must expose the friendly Luminare tab and render LuminareView'
+    'App must expose the friendly Luminare tab and pass apiConfig: aiConfig without ReferenceError'
   );
 
   assert.equal(LUMINARE_COACHING_STYLES.length, 4);
@@ -465,6 +466,27 @@ test('Phase 10: Email & password user authentication, Firebase Firestore documen
   assert.equal(chatReply.sender, 'luminare');
   assert.equal(Array.isArray(chatReply.suggestedFollowUps), true);
   assert.equal(chatReply.text.length > 20, true);
+
+  // Verify Luminare's built-in math & equation Socratic solver
+  const algebraReply = await chatWithLuminare({
+    userMessage: 'Solve 2x + 4 = 10',
+    coachingStyle: 'socratic',
+    activeCourse: INITIAL_COURSES[2],
+    weakSkills: INITIAL_COURSES[2].skills,
+    profile: DEFAULT_PROFILE,
+    apiConfig: {}
+  });
+  assert.equal(algebraReply.text.includes('x = 3'), true);
+
+  const fractionReply = await chatWithLuminare({
+    userMessage: 'Are 1/2 and 2/4 equivalent?',
+    coachingStyle: 'socratic',
+    activeCourse: INITIAL_COURSES[0],
+    weakSkills: INITIAL_COURSES[0].skills,
+    profile: DEFAULT_PROFILE,
+    apiConfig: {}
+  });
+  assert.equal(fractionReply.text.includes('1/2') && fractionReply.text.includes('2/4'), true);
 
   const studyPlan = await generatePersonalizedStudyPlan({
     courses: INITIAL_COURSES,

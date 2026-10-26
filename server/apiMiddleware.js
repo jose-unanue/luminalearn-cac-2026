@@ -316,39 +316,74 @@ export function luminaBackendPlugin() {
               serverKey.startsWith('sk-or-');
 
             if (isGemini) {
-              const model = requestedModel || 'gemini-2.5-flash';
-              const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(
-                serverKey
-              )}`;
-              const upstream = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  systemInstruction: { parts: [{ text: cleanSys }] },
-                  contents: [{ role: 'user', parts: [{ text: cleanUser }] }],
-                  generationConfig: {
-                    temperature: 0.4,
-                    ...(jsonMode
-                      ? { responseMimeType: 'application/json' }
-                      : {})
-                  }
-                })
-              });
-              if (upstream.ok) {
-                const data = await upstream.json();
-                const text =
-                  data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
-                res.statusCode = 200;
-                res.end(
-                  JSON.stringify({
-                    ok: true,
-                    source: 'gemini-proxy',
-                    checkpointGuarded: guarded.isCheckpointGuarded,
-                    text
+              const candidateModels = requestedModel
+                ? [
+                    requestedModel,
+                    'gemini-2.5-flash',
+                    'gemini-2.0-flash',
+                    'gemini-1.5-flash'
+                  ]
+                : ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+              const uniqueModels = [...new Set(candidateModels)];
+              let lastError = null;
+
+              for (const model of uniqueModels) {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(
+                  serverKey
+                )}`;
+                const upstream = await fetch(url, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    systemInstruction: { parts: [{ text: cleanSys }] },
+                    contents: [{ role: 'user', parts: [{ text: cleanUser }] }],
+                    generationConfig: {
+                      temperature: 0.4,
+                      ...(jsonMode
+                        ? { responseMimeType: 'application/json' }
+                        : {})
+                    }
                   })
-                );
-                return;
+                });
+                if (upstream.ok) {
+                  const data = await upstream.json();
+                  const text =
+                    data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+                  if (text) {
+                    res.statusCode = 200;
+                    res.end(
+                      JSON.stringify({
+                        ok: true,
+                        source: 'gemini-proxy',
+                        modelUsed: model,
+                        checkpointGuarded: guarded.isCheckpointGuarded,
+                        text
+                      })
+                    );
+                    return;
+                  }
+                } else {
+                  try {
+                    const errData = await upstream.json();
+                    lastError =
+                      errData?.error?.message || `HTTP ${upstream.status}`;
+                  } catch {
+                    lastError = `HTTP ${upstream.status}`;
+                  }
+                }
               }
+
+              res.statusCode = 200;
+              res.end(
+                JSON.stringify({
+                  ok: true,
+                  source: 'builtin-pedagogical-fallback',
+                  checkpointGuarded: guarded.isCheckpointGuarded,
+                  upstreamError: lastError,
+                  text: null
+                })
+              );
+              return;
             } else {
               const endpoint = isOpenRouter
                 ? 'https://openrouter.ai/api/v1/chat/completions'
@@ -382,8 +417,26 @@ export function luminaBackendPlugin() {
                   JSON.stringify({
                     ok: true,
                     source: isOpenRouter ? 'openrouter-proxy' : 'openai-proxy',
+                    modelUsed: model,
                     checkpointGuarded: guarded.isCheckpointGuarded,
                     text
+                  })
+                );
+                return;
+              } else {
+                let errMsg = `HTTP ${upstream.status}`;
+                try {
+                  const errData = await upstream.json();
+                  errMsg = errData?.error?.message || errMsg;
+                } catch {}
+                res.statusCode = 200;
+                res.end(
+                  JSON.stringify({
+                    ok: true,
+                    source: 'builtin-pedagogical-fallback',
+                    checkpointGuarded: guarded.isCheckpointGuarded,
+                    upstreamError: errMsg,
+                    text: null
                   })
                 );
                 return;

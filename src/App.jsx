@@ -609,7 +609,10 @@ function LuminaPlatformShell() {
             onLaunchLesson={(lesson) => setActiveLesson(lesson)}
           />
         ) : appMode === 'demo' ? (
-          <ResearchReportView />
+          <ResearchReportView
+            onOpenQuiz={() => setQuizOpen(true)}
+            onLaunchLesson={(lesson) => setActiveLesson(lesson)}
+          />
         ) : currentRoute === '/luminare' ? (
           <LuminareView
             onLaunchLesson={(lesson) => setActiveLesson(lesson)}
