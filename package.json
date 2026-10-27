@@ -8,8 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test tests/accessibility-and-flows.test.mjs",
-    "export-pptx": "node scripts/generate-pptx.mjs"
+    "test": "node --test tests/accessibility-and-flows.test.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.511.0",
@@ -19,7 +18,6 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.7",
     "@vitejs/plugin-react": "^4.4.1",
-    "pptxgenjs": "^4.0.1",
     "tailwindcss": "^4.1.7",
     "vite": "^6.3.5"
   }
